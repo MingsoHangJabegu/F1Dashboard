@@ -10,6 +10,7 @@ for year in range(2018, 2026):
     all_laps = []
     all_results = []
     all_qualifying = []
+    all_qualifying_laps = []
 
     for _, event in schedule.iterrows():
         gp_name = event["EventName"]
@@ -45,12 +46,19 @@ for year in range(2018, 2026):
             quali = fastf1.get_session(year, gp_round, "Q")
             quali.load(laps=True, telemetry=False, weather=False, messages=False)
 
+            # For results
             quali_results = quali.results.copy()
             quali_results["RoundNumber"] = gp_round
             quali_results["EventName"] = gp_name
             quali_results["Season"] = year
             all_qualifying.append(quali_results)
-            print("Qualifying")
+
+            # For lap by lap
+            quali_laps = quali.laps.copy()
+            quali_laps["RoundNumber"] = gp_round
+            quali_laps["EventName"] = gp_name
+            quali_laps["Season"] = year
+            all_qualifying_laps.append(quali_laps)
         except Exception as e:
             print(f"Qualifying: {e}")
 
@@ -62,27 +70,12 @@ for year in range(2018, 2026):
 
     if all_results:
         results_df = pd.concat(all_results, ignore_index=True)
-        # results_cols = [
-        #     "Season", "RoundNumber", "EventName",
-        #     "Position", "GridPosition",
-        #     "FullName", "Abbreviation", "DriverNumber",
-        #     "TeamName", "TeamColor",
-        #     "Time", "Status", "Points",
-        #     "Q1", "Q2", "Q3"
-        # ]
-        # results_cols = [c for c in results_cols if c in results_df.columns]
-        # results_df = results_df[results_cols]
         results_df.to_csv(f"data/race/race_results_{year}.csv", index=False)
 
     if all_qualifying:
         quali_df = pd.concat(all_qualifying, ignore_index=True)
-        # quali_cols = [
-        #     "Season", "RoundNumber", "EventName",
-        #     "Position",
-        #     "FullName", "Abbreviation", "DriverNumber",
-        #     "TeamName", "TeamColor",
-        #     "Q1", "Q2", "Q3"
-        # ]
-        # quali_cols = [c for c in quali_cols if c in quali_df.columns]
-        # quali_df = quali_df[quali_cols]
         quali_df.to_csv(f"data/qualifying/qualifying_results_{year}.csv", index=False)
+
+    if all_qualifying_laps:
+        quali_laps_df = pd.concat(all_qualifying_laps, ignore_index=True)
+        quali_laps_df.to_csv(f"data/qualifying_laps/qualifying_laps_{year}.csv", index=False)
