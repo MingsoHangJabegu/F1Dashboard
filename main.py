@@ -2,7 +2,7 @@ from dash import html, dcc, Input, Output
 
 from app import app
 from components.navbar import navbar
-from components.global_filter import global_filter
+# from components.global_filter import global_filter
 from pages import home, standings, race_analysis, compare
 
 # ── Colour tokens ────────────────────────────────────────────────────
@@ -26,12 +26,12 @@ app.layout = html.Div(
 )
 def display_page(pathname):
     if pathname == "/standings":
-        return html.Div([global_filter, standings.layout])
+        return standings.layout
     if pathname == "/race-analysis":
-        return html.Div([global_filter, race_analysis.layout])
+        return race_analysis.layout
     if pathname == "/compare":
-        return html.Div([global_filter, compare.layout])
-    return home.layout
+        return compare.layout
+    return race_analysis.layout
 
 
 # ── Run ──────────────────────────────────────────────────────────────

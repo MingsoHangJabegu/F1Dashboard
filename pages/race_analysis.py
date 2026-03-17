@@ -1,150 +1,217 @@
-from dash import html, dcc
-from dash.dependencies import Input, Output
+from dash import html, dcc, Input, Output, ALL, MATCH
+
 from app import app
-import sys
-import os
+from components.buttons.driver_toggle_button import get_driver_toggle_button_style
+from data_loader import (
+    seasons,
+    filter_laps, filter_results, get_races, get_color_map
+)
+from pages.standings import build_single_standings_card
+from visualisation.lap_times import plot_lap_times, lap_times_layout, _empty_fig
 
-# Add parent directory to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from data_loader import load_race_data
-
-F1_RED = "#E10600"
+# ── STYLES ────────────────────────────────────────────────────────
+F1_RED  = "#E10600"
 CARD_BG = "#1A1A2E"
+BORDER  = "#2a2a40"
 
+DD_STYLE = {
+    "backgroundColor": "#1E1E2E",
+    "color":           "#000",
+    "border":          f"1px solid {BORDER}",
+    "borderRadius":    "6px"
+}
 
+LABEL_STYLE = {
+    "color":         "#888",
+    "fontSize":      "11px",
+    "textTransform": "uppercase",
+    "letterSpacing": "1px",
+    "marginBottom":  "6px",
+    "display":       "block"
+}
+
+CARD_STYLE = {
+    "background":   CARD_BG,
+    "border":       f"1px solid {BORDER}",
+    "borderRadius": "12px",
+    "padding":      "16px",
+    "marginBottom": "16px",
+}
+
+# ── LAYOUT ────────────────────────────────────────────────────────
 layout = html.Div(
-    [
+    style={"maxWidth": "1200px", "margin": "0 auto"},
+    children=[
+
         html.H1("Race Analysis", style={"color": F1_RED, "fontSize": "22px"}),
         html.P(
             "Lap times, positions, tyres, and pit stops — all in one place",
             style={"color": "#555", "fontSize": "12px", "marginBottom": "28px"},
         ),
-        html.Div(id="race-analysis-content"),
-    ],
-    style={"maxWidth": "1200px", "margin": "0 auto"},
+
+        # ── GLOBAL FILTERS ────────────────────────────────────────
+        html.Div(
+            style={"display": "flex", "gap": "20px", "marginBottom": "24px",
+                   "flexWrap": "wrap", "alignItems": "flex-end"},
+            children=[
+                html.Div([
+                    html.Label("Season", style=LABEL_STYLE),
+                    dcc.Dropdown(
+                        id="ra-season-dd",
+                        options=[{"label": str(s), "value": s} for s in seasons],
+                        value=seasons[0] if seasons else None,
+                        clearable=False,
+                        style={**DD_STYLE, "width": "110px"}
+                    )
+                ]),
+                html.Div([
+                    html.Label("Session", style=LABEL_STYLE),
+                    dcc.Dropdown(
+                        id="ra-session-dd",
+                        options=[
+                            {"label": "Race",       "value": "Race"},
+                            {"label": "Qualifying", "value": "Qualifying"}
+                        ],
+                        value="Race",
+                        clearable=False,
+                        style={**DD_STYLE, "width": "140px"}
+                    )
+                ]),
+                html.Div([
+                    html.Label("Grand Prix", style=LABEL_STYLE),
+                    dcc.Dropdown(
+                        id="ra-gp-dd",
+                        clearable=False,
+                        style={**DD_STYLE, "width": "260px"}
+                    )
+                ]),
+            ]
+        ),
+
+        dcc.Store(id="ra-color-map-store"),
+
+        # ── LAP TIMES CHART ───────────────────────────────────────
+        html.Div(style=CARD_STYLE, children=[
+            html.Div(id="lap-times-container")
+        ]),
+
+        # ── Driver standing charts ────────────────────────────────────
+        html.Div(
+            style=CARD_STYLE,
+            children=[
+                html.Div(
+                    style={
+                        "display": "flex",
+                        "justifyContent": "space-between",
+                        "alignItems": "center",
+                        "gap": "16px",
+                        "flexWrap": "wrap",
+                        "marginBottom": "16px",
+                    },
+                    children=[
+                        html.H3(
+                            "Season Standings",
+                            style={"color": "#FFFFFF", "fontSize": "18px", "margin": "0"},
+                        ),
+                        dcc.Dropdown(
+                            id="ra-standings-type-dd",
+                            options=[
+                                {"label": "Driver Standings", "value": "drivers"},
+                                {"label": "Constructor Standings", "value": "constructors"},
+                            ],
+                            value="drivers",
+                            clearable=False,
+                            style={**DD_STYLE, "width": "220px"},
+                        ),
+                    ],
+                ),
+                html.Div(id="ra-standings-container"),
+            ],
+        ),
+
+    ]
 )
 
-# Callback to update content based on global filters
+# ── CALLBACKS ─────────────────────────────────────────────────────
+
 @app.callback(
-    Output("race-analysis-content", "children"),
-    [Input("global-season-dropdown", "value"),
-     Input("global-circuit-dropdown", "value")]
+    Output("ra-gp-dd", "options"),
+    Output("ra-gp-dd", "value"),
+    Input("ra-season-dd", "value"),
+    Input("ra-session-dd", "value")
 )
-def update_race_analysis_content(season, circuit):
-    """
-    Update race analysis content based on selected season and circuit.
-    """
-    if not season or not circuit:
-        return html.Div(
-            "Please select a season and circuit from the filters above.",
-            style={"color": "#888", "textAlign": "center", "padding": "40px"}
-        )
-    
-    # Load data for the selected race
-    laps_df = load_race_data(season, circuit, 'laps')
-    
-    if laps_df.empty:
-        return html.Div(
-            f"No data available for {circuit} {season}",
-            style={"color": "#888", "textAlign": "center", "padding": "40px"}
-        )
-    
-    # Get race statistics
-    total_laps = laps_df['LapNumber'].max()
-    total_drivers = laps_df['Driver'].nunique()
-    
-    return html.Div([
-        # Race Info Card
-        html.Div(
-            [
-                html.H3(f"{circuit} {season}", style={"color": F1_RED, "marginBottom": "12px"}),
-                html.Div([
-                    html.Span(f"Total Laps: {total_laps}", style={"marginRight": "20px"}),
-                    html.Span(f"Drivers: {total_drivers}"),
-                ], style={"color": "#CCCCCC", "fontSize": "14px"}),
-            ],
-            style={
-                "background": CARD_BG,
-                "borderRadius": "12px",
-                "padding": "20px",
-                "marginBottom": "16px",
-            },
-        ),
-        
-        # Lap Times Chart Placeholder
-        html.Div(
-            [
-                html.H4("Lap Times", style={"color": "#FFFFFF", "marginBottom": "16px"}),
-                html.Div(
-                    f"Interactive lap times chart will be displayed here",
-                    style={"color": "#666", "textAlign": "center", "padding": "60px"}
-                ),
-            ],
-            style={
-                "background": CARD_BG,
-                "border": "1px dashed #2a2a40",
-                "borderRadius": "12px",
-                "padding": "20px",
-                "marginBottom": "16px",
-            },
-        ),
-        
-        # Position Changes Chart Placeholder
-        html.Div(
-            [
-                html.H4("Position Changes", style={"color": "#FFFFFF", "marginBottom": "16px"}),
-                html.Div(
-                    f"Position changes throughout the race will be shown here",
-                    style={"color": "#666", "textAlign": "center", "padding": "60px"}
-                ),
-            ],
-            style={
-                "background": CARD_BG,
-                "border": "1px dashed #2a2a40",
-                "borderRadius": "12px",
-                "padding": "20px",
-                "marginBottom": "16px",
-            },
-        ),
-        
-        # Tyre Strategy and Pit Stops Row
-        html.Div(
-            style={"display": "flex", "gap": "16px"},
-            children=[
-                # Tyre Strategy
-                html.Div(
-                    [
-                        html.H4("Tyre Strategy", style={"color": "#FFFFFF", "marginBottom": "16px"}),
-                        html.Div(
-                            f"Tyre compound usage visualization",
-                            style={"color": "#666", "textAlign": "center", "padding": "40px"}
-                        ),
-                    ],
-                    style={
-                        "flex": "1",
-                        "background": CARD_BG,
-                        "border": "1px dashed #2a2a40",
-                        "borderRadius": "12px",
-                        "padding": "20px",
-                    },
-                ),
-                # Pit Stops
-                html.Div(
-                    [
-                        html.H4("Pit Stops", style={"color": "#FFFFFF", "marginBottom": "16px"}),
-                        html.Div(
-                            f"Pit stop timing and duration",
-                            style={"color": "#666", "textAlign": "center", "padding": "40px"}
-                        ),
-                    ],
-                    style={
-                        "flex": "1",
-                        "background": CARD_BG,
-                        "border": "1px dashed #2a2a40",
-                        "borderRadius": "12px",
-                        "padding": "20px",
-                    },
-                ),
-            ],
-        ),
-    ])
+def update_gp(season, session):
+    races   = get_races(season, session)
+    options = [{"label": r, "value": r} for r in races]
+    return options, races[0] if races else None
+
+
+@app.callback(
+    Output("ra-color-map-store", "data"),
+    Input("ra-season-dd", "value"),
+    Input("ra-gp-dd", "value"),
+    Input("ra-session-dd", "value")
+)
+def update_color_map(season, gp, session):
+    if not gp: return {}
+    return get_color_map(season, gp, session)
+
+
+@app.callback(
+    Output("lap-times-container", "children"),
+    Input("ra-season-dd", "value"),
+    Input("ra-gp-dd", "value"),
+    Input("ra-session-dd", "value"),
+    Input("ra-color-map-store", "data")
+)
+def render_lap_times(season, gp, session, color_map):
+    if not gp:
+        return html.Div("Select a Grand Prix",
+                        style={"color": "#666", "padding": "40px",
+                               "textAlign": "center"})
+    laps_df = filter_laps(season, gp, session)
+    res_df  = filter_results(season, gp)
+    return lap_times_layout(laps_df, res_df, session, color_map or {})
+
+
+@app.callback(
+    Output("ra-standings-container", "children"),
+    Input("ra-season-dd", "value"),
+    Input("ra-standings-type-dd", "value"),
+)
+def render_standings_tables(season, standings_type):
+    return build_single_standings_card(season, standings_type)
+
+
+@app.callback(
+    Output("lap-chart", "figure"),
+    Input("ra-season-dd", "value"),
+    Input("ra-gp-dd", "value"),
+    Input("ra-session-dd", "value"),
+    Input({"type": "driver-btn", "index": ALL}, "n_clicks"),
+    Input({"type": "driver-btn", "index": ALL}, "id"),
+    Input("ra-color-map-store", "data")
+)
+def update_chart(season, gp, session, n_clicks_list, ids, color_map):
+    if not gp:
+        return _empty_fig("Select a Grand Prix")
+    selected = [
+        btn["index"]
+        for btn, n in zip(ids, n_clicks_list)
+        if n and n % 2 == 1
+    ]
+    laps_df = filter_laps(season, gp, session)
+    return plot_lap_times(
+        df=laps_df,
+        session_type=session,
+        selected_drivers=selected or None,
+        color_map=color_map or {}
+    )
+
+
+@app.callback(
+    Output({"type": "driver-btn", "index": MATCH}, "style"),
+    Input({"type": "driver-btn", "index": MATCH}, "n_clicks"),
+)
+def toggle_button_style(n_clicks):
+    return get_driver_toggle_button_style(n_clicks)

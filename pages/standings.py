@@ -2,8 +2,9 @@ from dash import dcc, html
 from dash.dependencies import Input, Output, State
 
 from app import app
-from data_loader import load_csv
+from data_loader import load_csv, seasons
 import plotly.express as px
+from visualisation.driver_standings import driver_standings_card, get_driver_standings_df
 
 F1_RED = "#E10600"
 CARD_BG = "#1A1A2E"
@@ -36,64 +37,6 @@ def _season_summary_card(season, total_races, driver_count, team_count):
                     html.Span(f" | Teams: {team_count}", style={"marginLeft": "20px"}),
                 ],
                 style={"color": "#CCCCCC", "fontSize": "14px"},
-            ),
-        ],
-        style={
-            "background": CARD_BG,
-            "borderRadius": "12px",
-            "padding": "20px",
-            "marginBottom": "16px",
-        },
-    )
-
-
-def _driver_standings_card(driver_standings):
-    return html.Div(
-        [
-            html.H4("Driver Championship", style={"color": "#FFFFFF", "marginBottom": "16px"}),
-            html.Table(
-                [
-                    _table_header(
-                        [
-                            ("Pos", "left"),
-                            ("Driver", "left"),
-                            ("Team", "left"),
-                            ("Points", "right"),
-                        ]
-                    ),
-                    html.Tbody(
-                        [
-                            html.Tr(
-                                [
-                                    html.Td(
-                                        row["Position"],
-                                        style={"padding": "10px", "color": "#FFFFFF", "fontWeight": "bold"},
-                                    ),
-                                    html.Td(row["Abbreviation"], style={"padding": "10px", "color": "#CCCCCC"}),
-                                    html.Td(
-                                        row["TeamName"],
-                                        style={"padding": "10px", "color": "#999", "fontSize": "13px"},
-                                    ),
-                                    html.Td(
-                                        int(row["Points"]),
-                                        style={
-                                            "padding": "10px",
-                                            "color": "#FFFFFF",
-                                            "textAlign": "right",
-                                            "fontWeight": "bold",
-                                        },
-                                    ),
-                                ],
-                                style={
-                                    "borderBottom": "1px solid #2a2a40",
-                                    "backgroundColor": "#1A1A2E" if i % 2 == 0 else "#15151E",
-                                },
-                            )
-                            for i, (_, row) in enumerate(driver_standings.head(20).iterrows())
-                        ]
-                    ),
-                ],
-                style={"width": "100%", "borderCollapse": "collapse"},
             ),
         ],
         style={
@@ -234,6 +177,31 @@ def _get_season_results_df(season):
     return results_df.copy()
 
 
+def _get_driver_standings_df(season):
+    results_df = _get_season_results_df(season)
+    if results_df is None:
+        return None
+    return get_driver_standings_df(results_df)
+
+
+def _get_constructor_standings_df(season):
+    results_df = _get_season_results_df(season)
+    if results_df is None:
+        return None
+
+    team_standings = (
+        results_df.groupby("TeamName")
+        .agg({"Points": "sum", "TeamColor": "first"})
+        .reset_index()
+        .sort_values(["Points", "TeamName"], ascending=[False, True])
+    )
+    team_standings["Position"] = range(1, len(team_standings) + 1)
+    team_standings["TeamColor"] = (
+        team_standings["TeamColor"].fillna("4F8CFF").apply(lambda c: f"#{str(c).lstrip('#')}")
+    )
+    return team_standings
+
+
 def _get_constructor_dropdown_options(season):
     results_df = _get_season_results_df(season)
     if results_df is None:
@@ -331,6 +299,54 @@ def _build_wins_figure(wins_df, season, constructor_filter):
     return fig
 
 
+def build_standings_cards(season):
+    if not season:
+        return html.Div(
+            "Select a season to view standings.",
+            style={"color": "#888", "textAlign": "center", "padding": "40px"},
+        )
+
+    driver_standings = _get_driver_standings_df(season)
+    team_standings = _get_constructor_standings_df(season)
+    if driver_standings is None or team_standings is None:
+        return html.Div(
+            f"No standings data available for {season}.",
+            style={"color": "#888", "textAlign": "center", "padding": "40px"},
+        )
+
+    return html.Div(
+        [
+            driver_standings_card(driver_standings),
+            _constructor_standings_card(team_standings),
+        ],
+        style={
+            "display": "grid",
+            "gridTemplateColumns": "repeat(auto-fit, minmax(320px, 1fr))",
+            "gap": "16px",
+            "alignItems": "start",
+        },
+    )
+
+
+def build_single_standings_card(season, standings_type):
+    if standings_type == "constructors":
+        team_standings = _get_constructor_standings_df(season)
+        if team_standings is None:
+            return html.Div(
+                f"No constructor standings data available for {season}.",
+                style={"color": "#888", "textAlign": "center", "padding": "40px"},
+            )
+        return _constructor_standings_card(team_standings)
+
+    driver_standings = _get_driver_standings_df(season)
+    if driver_standings is None:
+        return html.Div(
+            f"No driver standings data available for {season}.",
+            style={"color": "#888", "textAlign": "center", "padding": "40px"},
+        )
+    return driver_standings_card(driver_standings)
+
+
 def _build_wins_summary(wins_df, constructor_filter):
     if wins_df is None:
         return "Select a season to analyse driver dominance."
@@ -366,15 +382,8 @@ def build_standings_sections(season, include_summary=True, include_progression=T
             style={"color": "#888", "textAlign": "center", "padding": "40px"},
         )
 
-    driver_standings = results_df.groupby("Abbreviation").agg(
-        {"Points": "sum", "BroadcastName": "first", "TeamName": "first"}
-    ).reset_index()
-    driver_standings = driver_standings.sort_values("Points", ascending=False)
-    driver_standings["Position"] = range(1, len(driver_standings) + 1)
-
-    team_standings = results_df.groupby("TeamName")["Points"].sum().reset_index()
-    team_standings = team_standings.sort_values("Points", ascending=False)
-    team_standings["Position"] = range(1, len(team_standings) + 1)
+    driver_standings = _get_driver_standings_df(season)
+    team_standings = _get_constructor_standings_df(season)
 
     sections = []
     if include_summary:
@@ -387,7 +396,7 @@ def build_standings_sections(season, include_summary=True, include_progression=T
             )
         )
 
-    sections.append(_driver_standings_card(driver_standings))
+    sections.append(driver_standings_card(driver_standings))
     sections.append(_constructor_standings_card(team_standings))
     sections.append(_wins_chart_card())
 
@@ -404,6 +413,21 @@ layout = html.Div(
             "Season standings and driver performance overview",
             style={"color": "#555", "fontSize": "12px", "marginBottom": "28px"},
         ),
+        dcc.Dropdown(
+            id="standings-season-dropdown",
+            options=[{"label": str(season), "value": season} for season in seasons],
+            value=seasons[0] if seasons else None,
+            clearable=False,
+            className="global-filter-dropdown",
+            style={
+                "maxWidth": "220px",
+                "marginBottom": "20px",
+                "backgroundColor": "#2A2A2D",
+                "color": "#070707",
+                "border": "1px solid #54545A",
+                "borderRadius": "14px",
+            },
+        ),
         html.Div(id="standings-content"),
     ],
     style={"maxWidth": "1200px", "margin": "0 auto"},
@@ -412,7 +436,7 @@ layout = html.Div(
 
 @app.callback(
     Output("standings-content", "children"),
-    Input("global-season-dropdown", "value"),
+    Input("standings-season-dropdown", "value"),
 )
 def update_standings_content(season):
     return build_standings_sections(season)
@@ -420,7 +444,7 @@ def update_standings_content(season):
 
 @app.callback(
     [Output("wins-constructor-dropdown", "options"), Output("wins-constructor-dropdown", "value")],
-    Input("global-season-dropdown", "value"),
+    Input("standings-season-dropdown", "value"),
     State("wins-constructor-dropdown", "value"),
 )
 def update_wins_constructor_options(season, current_constructor):
@@ -432,7 +456,7 @@ def update_wins_constructor_options(season, current_constructor):
 
 @app.callback(
     [Output("wins-by-driver-summary", "children"), Output("wins-by-driver-chart", "figure")],
-    [Input("global-season-dropdown", "value"), Input("wins-constructor-dropdown", "value")],
+    [Input("standings-season-dropdown", "value"), Input("wins-constructor-dropdown", "value")],
 )
 def update_wins_chart(season, constructor_filter):
     wins_df = _get_wins_dataframe(season, constructor_filter)
