@@ -1,111 +1,237 @@
 import pandas as pd
-import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
-import fastf1
-from fastf1 import plotting
+import plotly.graph_objects as go
+from dash import dcc, html
 
-fastf1.plotting.setup_mpl(mpl_timedelta_support=True, color_scheme='fastf1')
+# ── CONSTANTS ─────────────────────────────────────────────────────
+TEAM_COLORS = {
+    "Red Bull Racing":  "#3671C6",
+    "Ferrari":          "#E8002D",
+    "Mercedes":         "#27F4D2",
+    "McLaren":          "#FF8000",
+    "Aston Martin":     "#229971",
+    "Alpine":           "#FF87BC",
+    "Williams":         "#64C4FF",
+    "RB":               "#6692FF",
+    "Haas F1 Team":     "#B6BABD",
+    "Kick Sauber":      "#52E252",
+}
 
+# ── HELPERS ───────────────────────────────────────────────────────
+def _parse_to_seconds(val):
+    try:
+        if pd.isna(val): return None
+        val = str(val)
+        if "days" in val:
+            val = val.split("days")[-1].strip()
+        parts = val.split(":")
+        if len(parts) == 3:
+            h, m, s = parts
+            return int(h) * 3600 + int(m) * 60 + float(s)
+        elif len(parts) == 2:
+            m, s = parts
+            return int(m) * 60 + float(s)
+    except:
+        return None
 
-def plot_lap_times(year, grand_prix, session_type):
+def _fmt(sec):
+    if sec is None or pd.isna(sec): return "N/A"
+    m = int(sec // 60)
+    s = sec % 60
+    return f"{m:02d}:{s:06.3f}"
+
+def _btn_style(active, color="#888888"):
+    return {
+        "backgroundColor": "#1E1E2E"        if active else "rgba(0,0,0,0)",
+        "color":           "#FFFFFF"         if active else "#666",
+        "border":          "1px solid #555" if active else "1px solid #333",
+        "borderRadius":    "20px",
+        "padding":         "5px 14px",
+        "fontSize":        "12px",
+        "fontFamily":      "'Titillium Web', Arial, sans-serif",
+        "fontWeight":      "700",
+        "cursor":          "pointer",
+        "letterSpacing":   "1px",
+    }
+
+# ── DRIVER TOGGLE LAYOUT ──────────────────────────────────────────
+def lap_times_layout(df, results_df, session_type, color_map=None):
+    color_map   = color_map or {}
+
+    # ── sort drivers by finish position ──
+    if not results_df.empty and "Abbreviation" in results_df.columns:
+        results_df = results_df.copy()
+        results_df["Position"] = pd.to_numeric(results_df["Position"], errors="coerce")
+        ordered = results_df.sort_values("Position")["Abbreviation"].dropna().tolist()
+        # only keep drivers that are in the laps data
+        available = set(df["Driver"].dropna().unique())
+        all_drivers = [d for d in ordered if d in available]
+        # append any drivers not in results (e.g. DNFs missing from results)
+        all_drivers += sorted([d for d in available if d not in all_drivers])
+    else:
+        all_drivers = sorted(df["Driver"].dropna().unique().tolist())
+
+    top3 = ordered[:3] if not results_df.empty else all_drivers[:3]
+
+    toggle_buttons = [
+        html.Button(
+            driver,
+            id={"type": "driver-btn", "index": driver},
+            n_clicks=1 if driver in top3 else 0,
+            style=_btn_style(
+                active=driver in top3,
+                color=color_map.get(driver, "#888888")
+            )
+        )
+        for driver in all_drivers
+    ]
+
+    return html.Div([
+        dcc.Graph(id="lap-chart", config={"displayModeBar": False}),
+        html.Div(
+            toggle_buttons,
+            id="driver-toggles",
+            style={
+                "display":        "flex",
+                "flexWrap":       "wrap",
+                "gap":            "8px",
+                "justifyContent": "center",
+                "padding":        "12px 16px 4px 16px",
+            }
+        )
+    ])
+
+# ── MAIN PLOT FUNCTION ────────────────────────────────────────────
+def plot_lap_times(df, session_type, selected_drivers=None, color_map=None):
     """
-    Plots lap times for all drivers in a given session from CSV data.
+    Returns a Plotly figure of lap times.
 
     Parameters
     ----------
-    year         : int  e.g. 2025
-    grand_prix   : str  e.g. "Australian Grand Prix"
-    session_type : str  "Race" or "Qualifying"
+    df               : filtered laps dataframe (already filtered by season, race, session)
+    session_type     : "Race" or "Qualifying"
+    selected_drivers : list of driver abbreviations to plot
     """
+    if df is None or df.empty:
+        return _empty_fig("No data available")
 
-    # Load data
-    if session_type == "Race":
-        path = f"data/laps/laps_{year}.csv"
-    else:
-        path = f"data/qualifying_laps/qualifying_laps_{year}.csv"
+    df = df.copy()
+    df["LapTimeSec"] = df["LapTime"].apply(_parse_to_seconds)
+    df = df[df["LapTimeSec"].notna()]
+    # df = df[df["LapTimeSec"].notna() & df["LapTimeSec"].between(60, 300)]
 
-    try:
-        df = pd.read_csv(path)
-    except FileNotFoundError:
-        print(f"File not found: {path}")
-        return
-
-    df = df[df["EventName"] == grand_prix].copy()
+    # if session_type == "Race":
+    #     df = df[df["PitInTime"].isna() & df["PitOutTime"].isna()]
 
     if df.empty:
-        print(f"No data found for {grand_prix} {year} {session_type}")
-        return
+        return _empty_fig("No lap data found")
 
-    # Parsing to seconds for plotting
-    def parse_to_seconds(val):
-        try:
-            if pd.isna(val): return None
-            val = str(val)
-            if "days" in val:
-                val = val.split("days")[-1].strip()
-            parts = val.split(":")
-            if len(parts) == 3:
-                h, m, s = parts
-                return int(h) * 3600 + int(m) * 60 + float(s)
-            elif len(parts) == 2:
-                m, s = parts
-                return int(m) * 60 + float(s)
-        except:
-            return None
+    if selected_drivers:
+        df = df[df["Driver"].isin(selected_drivers)]
 
-    df["LapTimeSec"] = df["LapTime"].apply(parse_to_seconds)
-    df = df[df["LapTimeSec"].notna()]
-    df = df[df["LapTimeSec"].between(60, 300)]
+    if df.empty:
+        return _empty_fig("No data for selected drivers")
 
-    # Exclude pit laps for race
-    if session_type == "Race":
-        df = df[df["PitInTime"].isna() & df["PitOutTime"].isna()]
+    y_min     = df["LapTimeSec"].min()
+    y_max     = df["LapTimeSec"].max()
+    tick_vals = [y_min + i * 5 for i in range(int((y_max - y_min) / 5) + 2)]
+    tick_text = [_fmt(v) for v in tick_vals]
 
-    # Getting driver colors for plotting
-    session_code = "R" if session_type == "Race" else "Q"
-    session = fastf1.get_session(year, grand_prix, session_code)
-    session.load(laps=False, telemetry=False, weather=False, messages=False)
+    fig = go.Figure()
 
-    # Plotting
-    fig, ax = plt.subplots(figsize=(14, 6))
+    seen_colors = {}  # track colours already used
 
-    for driver in sorted(df["Driver"].dropna().unique()):
-        laps = df[df["Driver"] == driver].sort_values("LapNumber")
+    for driver in selected_drivers or sorted(df["Driver"].dropna().unique()):
+        d     = df[df["Driver"] == driver].sort_values("LapNumber")
+        if d.empty: continue
 
-        try:
-            style = plotting.get_driver_style(
-                identifier=driver,
-                style=["color", "linestyle"],
-                session=session
-            )
-        except Exception:
-            style = {"color": "#ffffff", "linestyle": "-"}
+        color = color_map.get(driver, "#888888")
 
-        ax.plot(laps["LapNumber"], laps["LapTimeSec"],
-                **style, label=driver, linewidth=1.2)
+        # ── If teammate has same colour, use dashed line ──────────────
+        dash  = "dash" if color in seen_colors else "solid"
+        seen_colors[color] = driver
 
-    # Y axis formatting, tick every 5 seconds
-    def fmt_laptime(sec, _):
-        sec = int(sec)
-        return f"{sec // 60}:{sec % 60:02d}"
+        fig.add_trace(go.Scatter(
+            x=d["LapNumber"],
+            y=d["LapTimeSec"],
+            mode="lines+markers",
+            name=driver,
+            line=dict(color=color, width=2, dash=dash),
+            marker=dict(size=6, color=color, symbol="circle"),
+            hovertemplate=(
+                f"<b>Lap: %{{x}}</b><br>"
+                f"<span style='color:{color}'>⬤</span> "
+                f"%{{customdata[0]}} · {driver}"
+                "<extra></extra>"
+            ),
+            customdata=list(zip(
+                d["LapTime"].apply(lambda x: _fmt(_parse_to_seconds(x)))
+            ))
+        ))
 
-    ax.yaxis.set_major_locator(ticker.MultipleLocator(5))
-    ax.yaxis.set_major_formatter(ticker.FuncFormatter(fmt_laptime))
-    ax.set_xlabel("Lap Number")
-    ax.set_ylabel("Lap Time")
-    ax.set_title(f"{grand_prix} {year} — {session_type}")
-    ax.legend(loc="upper right", fontsize=8, ncol=2)
-
-    plt.tight_layout()
-    plt.savefig(f"lap_times_{year}_{session_type}.png", dpi=150, bbox_inches="tight")
-    plt.show()
+    fig.update_layout(
+        title=dict(
+            text="Lap Times",
+            font=dict(color="#ffffff", size=20,
+                      family="'Titillium Web', Arial, sans-serif"),
+            x=0.5,
+            pad=dict(t=10)
+        ),
+        plot_bgcolor="#15151E",
+        paper_bgcolor="#15151E",
+        font=dict(color="#CCCCCC",
+                  family="'Titillium Web', Arial, sans-serif"),
+        xaxis=dict(
+            title=None,
+            gridcolor="#222230",
+            gridwidth=1,
+            griddash="dot",
+            zerolinecolor="#333",
+            tickfont=dict(color="#888", size=11),
+            showline=False,
+        ),
+        yaxis=dict(
+            title=None,
+            gridcolor="#222230",
+            gridwidth=1,
+            griddash="dot",
+            tickvals=tick_vals,
+            ticktext=tick_text,
+            tickfont=dict(color="#888", size=11),
+            showline=False,
+        ),
+        legend=dict(
+            orientation="h",
+            yanchor="top",
+            y=-0.12,
+            xanchor="center",
+            x=0.5,
+            bgcolor="rgba(0,0,0,0)",
+            font=dict(color="#fff", size=11),
+        ),
+        hovermode="x unified",
+        hoverlabel=dict(
+            bgcolor="#1E1E2E",
+            bordercolor="#444",
+            font=dict(color="#fff", size=12)
+        ),
+        margin=dict(l=70, r=20, t=60, b=80),
+        height=500,
+    )
 
     return fig
 
-
-# calling the function for demo
-if __name__ == "__main__":
-    plot_lap_times(2023, "Azerbaijan Grand Prix", "Qualifying")
-
-
-# TODO: Make chart interactive (possibly use plotly, not matplotlib)
+# ── EMPTY FIGURE ──────────────────────────────────────────────────
+def _empty_fig(message):
+    fig = go.Figure()
+    fig.add_annotation(
+        text=message, x=0.5, y=0.5,
+        xref="paper", yref="paper",
+        showarrow=False,
+        font=dict(color="#888", size=14)
+    )
+    fig.update_layout(
+        plot_bgcolor="#15151E",
+        paper_bgcolor="#15151E",
+        height=500
+    )
+    return fig
