@@ -43,7 +43,7 @@ seasons = (
 # ── FILTER HELPERS ────────────────────────────────────────────────
 def filter_laps(season, race, session):
     if not season or not race: return pd.DataFrame()
-    df = race_df if session == "Race" else quali_df
+    df = race_df if session == "Race" else quali_laps_df
     if df.empty: return pd.DataFrame()
     required = {"Season", "EventName", "LapTime", "LapNumber"}
     if not required.issubset(df.columns): return pd.DataFrame()
