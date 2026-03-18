@@ -1,10 +1,12 @@
 from dash import html, dcc, Input, Output, ALL, MATCH
 
 from app import app
+from components.buttons.driver_toggle_button import get_driver_toggle_button_style
 from data_loader import (
     seasons,
     filter_laps, filter_results, get_races, get_color_map
 )
+from pages.standings import build_single_standings_card
 from visualisation.lap_times import plot_lap_times, lap_times_layout, _empty_fig
 
 # ── STYLES ────────────────────────────────────────────────────────
@@ -93,29 +95,40 @@ layout = html.Div(
             html.Div(id="lap-times-container")
         ]),
 
-        # ── PLACEHOLDER CHARTS ────────────────────────────────────
+        # ── Driver standing charts ────────────────────────────────────
         html.Div(
-            "Position changes chart will go here",
-            style={**CARD_STYLE, "color": "#444", "textAlign": "center",
-                   "padding": "40px"},
-        ),
-        html.Div(
-            style={"display": "flex", "gap": "16px"},
+            style=CARD_STYLE,
             children=[
                 html.Div(
-                    "Tyre strategy chart will go here",
-                    style={**CARD_STYLE, "flex": "1", "color": "#444",
-                           "textAlign": "center", "padding": "40px",
-                           "marginBottom": "0"},
+                    style={
+                        "display": "flex",
+                        "justifyContent": "space-between",
+                        "alignItems": "center",
+                        "gap": "16px",
+                        "flexWrap": "wrap",
+                        "marginBottom": "16px",
+                    },
+                    children=[
+                        html.H3(
+                            "Season Standings",
+                            style={"color": "#FFFFFF", "fontSize": "18px", "margin": "0"},
+                        ),
+                        dcc.Dropdown(
+                            id="ra-standings-type-dd",
+                            options=[
+                                {"label": "Driver Standings", "value": "drivers"},
+                                {"label": "Constructor Standings", "value": "constructors"},
+                            ],
+                            value="drivers",
+                            clearable=False,
+                            style={**DD_STYLE, "width": "220px"},
+                        ),
+                    ],
                 ),
-                html.Div(
-                    "Pit stops chart will go here",
-                    style={**CARD_STYLE, "flex": "1", "color": "#444",
-                           "textAlign": "center", "padding": "40px",
-                           "marginBottom": "0"},
-                ),
+                html.Div(id="ra-standings-container"),
             ],
         ),
+
     ]
 )
 
@@ -162,6 +175,15 @@ def render_lap_times(season, gp, session, color_map):
 
 
 @app.callback(
+    Output("ra-standings-container", "children"),
+    Input("ra-season-dd", "value"),
+    Input("ra-standings-type-dd", "value"),
+)
+def render_standings_tables(season, standings_type):
+    return build_single_standings_card(season, standings_type)
+
+
+@app.callback(
     Output("lap-chart", "figure"),
     Input("ra-season-dd", "value"),
     Input("ra-gp-dd", "value"),
@@ -192,16 +214,4 @@ def update_chart(season, gp, session, n_clicks_list, ids, color_map):
     Input({"type": "driver-btn", "index": MATCH}, "n_clicks"),
 )
 def toggle_button_style(n_clicks):
-    active = n_clicks and n_clicks % 2 == 1
-    return {
-        "backgroundColor": "#1E1E2E"        if active else "rgba(0,0,0,0)",
-        "color":           "#FFFFFF"         if active else "#666",
-        "border":          "1px solid #555" if active else "1px solid #333",
-        "borderRadius":    "20px",
-        "padding":         "5px 14px",
-        "fontSize":        "12px",
-        "fontFamily":      "'Titillium Web', Arial, sans-serif",
-        "fontWeight":      "700",
-        "cursor":          "pointer",
-        "letterSpacing":   "1px",
-    }
+    return get_driver_toggle_button_style(n_clicks)
