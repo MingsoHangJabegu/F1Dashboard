@@ -24,17 +24,15 @@ navbar = dbc.Navbar(
                         ),
                         width="auto",
                     ),
-                    # dbc.Col(
-                    #     dbc.Nav(
-                    #         [
-                    #             dbc.NavLink("Home", href="/", id="nav-home", active="exact"),
-                    #             dbc.NavLink("Standings", href="/standings", id="nav-standings", active="exact"),
-                    #             dbc.NavLink("Race Analysis", href="/race-analysis", id="nav-race", active="exact"),
-                    #             dbc.NavLink("Compare", href="/compare", id="nav-compare", active="exact"),
-                    #         ],
-                    #         navbar=True,
-                    #     ),
-                    # ),
+                    dbc.Col(
+                        dbc.Nav(
+                            [
+                                dbc.NavLink("Race Analysis", href="/race-analysis", id="nav-race", active="exact"),
+                                dbc.NavLink("Grid Position Analysis", href="/grid-position-analysis", id="nav-gridpos", active="exact"),
+                            ],
+                            navbar=True,
+                        ),
+                    ),
                 ],
                 align="center",
                 className="g-0 flex-nowrap ",
