@@ -15,7 +15,7 @@ import os
 
 from app import app
 
-# ── CONSTANTS ──────────────────────────────────────────────────────
+# ── CONSTANTS 
 F1_RED   = "#E10600"
 CARD_BG  = "#1A1A2E"
 BODY_BG  = "#111119"
@@ -46,7 +46,7 @@ CARD_STYLE = {
     "marginBottom": "20px",
 }
 
-# ── DATA LOADING ───────────────────────────────────────────────────
+# ── DATA LOADING
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "race")
 
 
@@ -109,7 +109,7 @@ def _get_team_color(df, abbreviation):
     return f"#{raw.lstrip('#')}"
 
 
-# ── HELPERS – FIGURE BUILDERS ──────────────────────────────────────
+# ── HELPERS – FIGURE BUILDERS
 
 def _empty_fig(message="No data available"):
     fig = go.Figure()
@@ -413,7 +413,7 @@ layout = html.Div(
             style={"color": "#555", "fontSize": "12px", "marginBottom": "28px"},
         ),
 
-        # ── FILTERS ───────────────────────────────────────────────
+        # ── FILTERS
         html.Div(
             style={
                 "display":     "flex",
@@ -460,7 +460,7 @@ layout = html.Div(
             ],
         ),
 
-        # ── SUMMARY STAT CARDS ────────────────────────────────────
+        # ── SUMMARY STAT CARDS
         html.Div(
             style=CARD_STYLE,
             children=[
@@ -472,7 +472,7 @@ layout = html.Div(
             ],
         ),
 
-        # ── POINTS LINE CHART ─────────────────────────────────────
+        # ── POINTS LINE CHART
         html.Div(
             style=CARD_STYLE,
             children=[
@@ -483,7 +483,7 @@ layout = html.Div(
             ],
         ),
 
-        # ── WINS BAR CHART ────────────────────────────────────────
+        # ── WINS BAR CHART
         html.Div(
             style=CARD_STYLE,
             children=[
@@ -498,7 +498,7 @@ layout = html.Div(
 )
 
 
-# ── CALLBACKS ──────────────────────────────────────────────────────
+# ── CALLBACKS
 
 @app.callback(
     Output("dpt-points-line-chart", "figure"),
