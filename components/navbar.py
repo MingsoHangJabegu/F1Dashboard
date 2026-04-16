@@ -27,6 +27,7 @@ navbar = dbc.Navbar(
                     dbc.Col(
                         dbc.Nav(
                             [
+                                dbc.NavLink("Home", href="/home", id="nav-home", active="exact"),
                                 dbc.NavLink("Race Analysis", href="/race-analysis", id="nav-race", active="exact"),
                                 dbc.NavLink("Grid Position Analysis", href="/grid-position-analysis", id="nav-gridpos", active="exact"),
                                 dbc.NavLink("Driver Trends", href="/driver-performance-trend", id="nav-dpt", active="exact"),
