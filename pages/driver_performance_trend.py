@@ -2,23 +2,23 @@
 Analysis Page 2 – Driver Performance Trend
 ===========================================
 Answers : How has a driver's performance changed across seasons?
-Purpose : Trend analysis
-Charts  : Line chart (points per season) + Bar chart (wins per season)
-Filters : Driver (multi-select), Season range (from / to)
+Purpose : Trend analysis with linear regression modelling
+Charts  : Line chart (points per season + regression trend line)
+          + Season Performance Overview bar chart (wins + podiums)
 """
 
 from dash import html, dcc, Input, Output
 import pandas as pd
+import numpy as np
 import plotly.graph_objects as go
 import glob
 import os
 
 from app import app
 
-# ── CONSTANTS 
+# ── CONSTANTS ──────────────────────────────────────────────────────
 F1_RED   = "#E10600"
 CARD_BG  = "#1A1A2E"
-BODY_BG  = "#111119"
 BORDER   = "#2a2a40"
 CHART_BG = "#15151E"
 
@@ -46,7 +46,14 @@ CARD_STYLE = {
     "marginBottom": "20px",
 }
 
-# ── DATA LOADING
+# Different marker shapes — FIX for same-team duplicate legend icons
+MARKER_SYMBOLS = [
+    "circle", "square", "diamond", "triangle-up",
+    "triangle-down", "star", "hexagon", "cross",
+    "pentagon", "bowtie", "hourglass", "asterisk"
+]
+
+# ── DATA LOADING ───────────────────────────────────────────────────
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "race")
 
 
@@ -73,7 +80,6 @@ _ALL_RESULTS = _load_all_results()
 
 
 def _driver_options():
-    """Return sorted list of drivers who raced in 2+ seasons."""
     if _ALL_RESULTS.empty:
         return []
     ds = _ALL_RESULTS.groupby("Abbreviation")["Season"].nunique()
@@ -84,11 +90,10 @@ def _driver_options():
         .set_index("Abbreviation")["FullName"]
         .to_dict()
     )
-    opts = sorted(
+    return sorted(
         [{"label": f"{name_map.get(a, a)} ({a})", "value": a} for a in multi],
         key=lambda x: x["label"],
     )
-    return opts
 
 
 def _season_options():
@@ -99,7 +104,6 @@ def _season_options():
 
 
 def _get_team_color(df, abbreviation):
-    """Best-effort team colour for a driver (latest season)."""
     sub = df[df["Abbreviation"] == abbreviation].sort_values("Season", ascending=False)
     if sub.empty or "TeamColor" not in sub.columns:
         return "#888888"
@@ -109,8 +113,12 @@ def _get_team_color(df, abbreviation):
     return f"#{raw.lstrip('#')}"
 
 
-# ── HELPERS – FIGURE BUILDERS
+def _get_full_name(df, abbreviation):
+    sub = df[df["Abbreviation"] == abbreviation]["FullName"].dropna()
+    return sub.iloc[0] if not sub.empty else abbreviation
 
+
+# ── EMPTY FIGURE ───────────────────────────────────────────────────
 def _empty_fig(message="No data available"):
     fig = go.Figure()
     fig.add_annotation(
@@ -120,16 +128,14 @@ def _empty_fig(message="No data available"):
         font=dict(color="#888", size=14),
     )
     fig.update_layout(
-        plot_bgcolor=CHART_BG,
-        paper_bgcolor=CHART_BG,
-        height=400,
-        margin=dict(l=20, r=20, t=40, b=20),
+        plot_bgcolor=CHART_BG, paper_bgcolor=CHART_BG,
+        height=420, margin=dict(l=20, r=20, t=40, b=20),
     )
     return fig
 
 
+# ── CHART 1: POINTS LINE CHART + REGRESSION TREND ─────────────────
 def _build_points_line_chart(df, drivers, from_year, to_year):
-    """Line chart: total points per season per driver."""
     if df.empty or not drivers:
         return _empty_fig("Select at least one driver to see the trend.")
 
@@ -143,188 +149,163 @@ def _build_points_line_chart(df, drivers, from_year, to_year):
 
     season_pts = (
         filtered.groupby(["Abbreviation", "Season"])["Points"]
-        .sum()
-        .reset_index()
+        .sum().reset_index()
         .rename(columns={"Points": "TotalPoints"})
     )
 
     fig = go.Figure()
-    for driver in drivers:
+
+    for i, driver in enumerate(drivers):
         d = season_pts[season_pts["Abbreviation"] == driver].sort_values("Season")
         if d.empty:
             continue
-        color = _get_team_color(df, driver)
-        full_name = (
-            df[df["Abbreviation"] == driver]["FullName"]
-            .dropna().iloc[0]
-            if not df[df["Abbreviation"] == driver].empty else driver
-        )
+
+        color     = _get_team_color(df, driver)
+        full_name = _get_full_name(df, driver)
+        symbol    = MARKER_SYMBOLS[i % len(MARKER_SYMBOLS)]  # FIX 1: unique shape
+
+        # Actual data line
         fig.add_trace(go.Scatter(
-            x=d["Season"],
-            y=d["TotalPoints"],
+            x=d["Season"], y=d["TotalPoints"],
             mode="lines+markers",
             name=full_name,
             line=dict(color=color, width=2.5),
-            marker=dict(size=8, color=color, symbol="circle",
+            marker=dict(size=9, color=color, symbol=symbol,
                         line=dict(color="#fff", width=1)),
             hovertemplate=(
                 f"<b>{full_name}</b><br>"
-                "Season: %{x}<br>"
-                "Points: %{y}<extra></extra>"
+                "Season: %{x}<br>Points: %{y}<extra></extra>"
             ),
         ))
+
+        # FIX 2: Linear regression trend line
+        if len(d) >= 2:
+            x_vals = d["Season"].values
+            y_vals = d["TotalPoints"].values
+            slope, intercept = np.polyfit(x_vals, y_vals, 1)
+            trend_y = slope * x_vals + intercept
+            direction = "improving" if slope > 0 else "declining"
+
+            fig.add_trace(go.Scatter(
+                x=x_vals, y=trend_y,
+                mode="lines",
+                name=f"{full_name} trend ({direction})",
+                line=dict(color=color, width=1.5, dash="dash"),
+                opacity=0.55,
+                hovertemplate=(
+                    f"<b>{full_name} — Regression Trend</b><br>"
+                    f"Slope: {slope:+.1f} pts/season<br>"
+                    f"Performance: {direction}<extra></extra>"
+                ),
+            ))
 
     all_seasons = sorted(season_pts["Season"].unique().astype(int))
     fig.update_layout(
         title=dict(
-            text="Championship Points per Season",
-            font=dict(color="#ffffff", size=18,
+            text="Championship Points per Season  <i>(dashed lines = linear regression trend)</i>",
+            font=dict(color="#ffffff", size=16,
                       family="'Titillium Web', Arial, sans-serif"),
             x=0.5,
         ),
-        plot_bgcolor=CHART_BG,
-        paper_bgcolor=CHART_BG,
+        plot_bgcolor=CHART_BG, paper_bgcolor=CHART_BG,
         font=dict(color="#CCCCCC", family="'Titillium Web', Arial, sans-serif"),
-        xaxis=dict(
-            title="Season",
-            tickvals=all_seasons,
-            ticktext=[str(s) for s in all_seasons],
-            gridcolor="#222230",
-            gridwidth=1,
-            griddash="dot",
-            tickfont=dict(color="#888", size=11),
-        ),
-        yaxis=dict(
-            title="Total Points",
-            gridcolor="#222230",
-            gridwidth=1,
-            griddash="dot",
-            tickfont=dict(color="#888", size=11),
-        ),
-        legend=dict(
-            orientation="h",
-            yanchor="top",
-            y=-0.18,
-            xanchor="center",
-            x=0.5,
-            bgcolor="rgba(0,0,0,0)",
-            font=dict(color="#fff", size=11),
-        ),
+        xaxis=dict(title="Season", tickvals=all_seasons,
+                   ticktext=[str(s) for s in all_seasons],
+                   gridcolor="#222230", griddash="dot",
+                   tickfont=dict(color="#888", size=11)),
+        yaxis=dict(title="Total Points", gridcolor="#222230",
+                   griddash="dot", tickfont=dict(color="#888", size=11)),
+        legend=dict(orientation="h", yanchor="top", y=-0.22,
+                    xanchor="center", x=0.5, bgcolor="rgba(0,0,0,0)",
+                    font=dict(color="#fff", size=11)),
         hovermode="x unified",
-        hoverlabel=dict(
-            bgcolor="#1E1E2E",
-            bordercolor="#444",
-            font=dict(color="#fff", size=12),
-        ),
-        margin=dict(l=60, r=20, t=60, b=90),
-        height=420,
+        hoverlabel=dict(bgcolor="#1E1E2E", bordercolor="#444",
+                        font=dict(color="#fff", size=12)),
+        margin=dict(l=60, r=20, t=70, b=120),
+        height=460,
     )
     return fig
 
 
-def _build_wins_bar_chart(df, drivers, from_year, to_year):
-    """Grouped bar chart: race wins per season per driver."""
+# ── CHART 2: SEASON PERFORMANCE OVERVIEW (WINS + PODIUMS) ──────────
+def _build_performance_overview_chart(df, drivers, from_year, to_year):
+    """
+    FIX 3 — Renamed & reframed from 'Race Wins' to 'Season Performance Overview'.
+    Shows BOTH wins AND podiums per season — differentiates from Isha's wins-only chart.
+    """
     if df.empty or not drivers:
-        return _empty_fig("Select at least one driver to see wins.")
+        return _empty_fig("Select at least one driver.")
 
     filtered = df[
         (df["Abbreviation"].isin(drivers)) &
         (df["Season"] >= from_year) &
-        (df["Season"] <= to_year) &
-        (df["Position"] == 1)
+        (df["Season"] <= to_year)
     ]
-
-    all_seasons = sorted(
-        df[
-            (df["Abbreviation"].isin(drivers)) &
-            (df["Season"] >= from_year) &
-            (df["Season"] <= to_year)
-        ]["Season"].dropna().unique().astype(int)
-    )
+    all_seasons = sorted(filtered["Season"].dropna().unique().astype(int))
+    if not all_seasons:
+        return _empty_fig("No data for the selected filters.")
 
     fig = go.Figure()
 
-    for driver in drivers:
-        d = (
-            filtered[filtered["Abbreviation"] == driver]
-            .groupby("Season")
-            .size()
-            .reindex(all_seasons, fill_value=0)
-            .reset_index()
-        )
-        d.columns = ["Season", "Wins"]
-        color = _get_team_color(df, driver)
-        full_name = (
-            df[df["Abbreviation"] == driver]["FullName"]
-            .dropna().iloc[0]
-            if not df[df["Abbreviation"] == driver].empty else driver
-        )
+    for i, driver in enumerate(drivers):
+        d         = filtered[filtered["Abbreviation"] == driver]
+        color     = _get_team_color(df, driver)
+        full_name = _get_full_name(df, driver)
+
+        wins_s = (d[d["Position"] == 1].groupby("Season").size()
+                  .reindex(all_seasons, fill_value=0).reset_index())
+        wins_s.columns = ["Season", "Count"]
+
+        podiums_s = (d[d["Position"] <= 3].groupby("Season").size()
+                     .reindex(all_seasons, fill_value=0).reset_index())
+        podiums_s.columns = ["Season", "Count"]
+
         fig.add_trace(go.Bar(
-            x=d["Season"],
-            y=d["Wins"],
-            name=full_name,
-            marker=dict(
-                color=color,
-                line=dict(color="rgba(255,255,255,0.15)", width=1),
-            ),
-            hovertemplate=(
-                f"<b>{full_name}</b><br>"
-                "Season: %{x}<br>"
-                "Wins: %{y}<extra></extra>"
-            ),
+            x=wins_s["Season"], y=wins_s["Count"],
+            name=f"{full_name} — Wins",
+            marker=dict(color=color,
+                        line=dict(color="rgba(255,255,255,0.2)", width=1)),
+            hovertemplate=f"<b>{full_name}</b><br>Season: %{{x}}<br>Wins: %{{y}}<extra></extra>",
+        ))
+
+        fig.add_trace(go.Bar(
+            x=podiums_s["Season"], y=podiums_s["Count"],
+            name=f"{full_name} — Podiums",
+            marker=dict(color=color, opacity=0.4,
+                        pattern_shape="/",
+                        line=dict(color="rgba(255,255,255,0.1)", width=1)),
+            hovertemplate=f"<b>{full_name}</b><br>Season: %{{x}}<br>Podiums: %{{y}}<extra></extra>",
         ))
 
     fig.update_layout(
         barmode="group",
         title=dict(
-            text="Race Wins per Season",
-            font=dict(color="#ffffff", size=18,
+            text="Season Performance Overview — Wins (solid) & Podiums (striped) per Season",
+            font=dict(color="#ffffff", size=16,
                       family="'Titillium Web', Arial, sans-serif"),
             x=0.5,
         ),
-        plot_bgcolor=CHART_BG,
-        paper_bgcolor=CHART_BG,
+        plot_bgcolor=CHART_BG, paper_bgcolor=CHART_BG,
         font=dict(color="#CCCCCC", family="'Titillium Web', Arial, sans-serif"),
-        xaxis=dict(
-            title="Season",
-            tickvals=all_seasons,
-            ticktext=[str(s) for s in all_seasons],
-            gridcolor="#222230",
-            tickfont=dict(color="#888", size=11),
-        ),
-        yaxis=dict(
-            title="Race Wins",
-            dtick=1,
-            gridcolor="#222230",
-            gridwidth=1,
-            griddash="dot",
-            tickfont=dict(color="#888", size=11),
-        ),
-        legend=dict(
-            orientation="h",
-            yanchor="top",
-            y=-0.18,
-            xanchor="center",
-            x=0.5,
-            bgcolor="rgba(0,0,0,0)",
-            font=dict(color="#fff", size=11),
-        ),
+        xaxis=dict(title="Season", tickvals=all_seasons,
+                   ticktext=[str(s) for s in all_seasons],
+                   gridcolor="#222230", tickfont=dict(color="#888", size=11)),
+        yaxis=dict(title="Count", dtick=1, gridcolor="#222230",
+                   griddash="dot", tickfont=dict(color="#888", size=11)),
+        legend=dict(orientation="h", yanchor="top", y=-0.22,
+                    xanchor="center", x=0.5, bgcolor="rgba(0,0,0,0)",
+                    font=dict(color="#fff", size=11)),
         hovermode="x unified",
-        hoverlabel=dict(
-            bgcolor="#1E1E2E",
-            bordercolor="#444",
-            font=dict(color="#fff", size=12),
-        ),
-        margin=dict(l=60, r=20, t=60, b=90),
-        height=420,
-        bargap=0.15,
-        bargroupgap=0.05,
+        hoverlabel=dict(bgcolor="#1E1E2E", bordercolor="#444",
+                        font=dict(color="#fff", size=12)),
+        margin=dict(l=60, r=20, t=70, b=120),
+        height=460, bargap=0.15, bargroupgap=0.05,
     )
     return fig
 
 
+# ── SUMMARY STAT CARDS ─────────────────────────────────────────────
 def _build_summary_stats(df, drivers, from_year, to_year):
-    """Build summary stat cards for the selected drivers."""
     if df.empty or not drivers:
         return html.Div()
 
@@ -341,55 +322,61 @@ def _build_summary_stats(df, drivers, from_year, to_year):
         d = filtered[filtered["Abbreviation"] == driver]
         if d.empty:
             continue
-        total_pts  = int(d["Points"].sum())
-        total_wins = int((d["Position"] == 1).sum())
-        podiums    = int((d["Position"] <= 3).sum())
-        best_season = (
-            d.groupby("Season")["Points"].sum().idxmax()
-            if not d.empty else "N/A"
-        )
-        color = _get_team_color(df, driver)
-        full_name = d["FullName"].dropna().iloc[0] if not d.empty else driver
+
+        total_pts   = int(d["Points"].sum())
+        total_wins  = int((d["Position"] == 1).sum())
+        podiums     = int((d["Position"] <= 3).sum())
+        best_season = d.groupby("Season")["Points"].sum().idxmax()
+
+        # Regression-based trend insight shown in summary card
+        season_pts = d.groupby("Season")["Points"].sum().reset_index()
+        trend_text = "N/A"
+        if len(season_pts) >= 2:
+            slope, _ = np.polyfit(season_pts["Season"], season_pts["Points"], 1)
+            if slope > 5:
+                trend_text = f"📈 +{slope:.1f} pts/yr"
+            elif slope < -5:
+                trend_text = f"📉 {slope:.1f} pts/yr"
+            else:
+                trend_text = f"➡️ Stable ({slope:+.1f} pts/yr)"
+
+        color     = _get_team_color(df, driver)
+        full_name = _get_full_name(df, driver)
 
         cards.append(html.Div(
             style={
-                "background":    "#15151E",
-                "border":        f"1px solid {BORDER}",
-                "borderLeft":    f"4px solid {color}",
-                "borderRadius":  "10px",
-                "padding":       "14px 18px",
-                "minWidth":      "200px",
-                "flex":          "1",
+                "background":   "#15151E",
+                "border":       f"1px solid {BORDER}",
+                "borderLeft":   f"4px solid {color}",
+                "borderRadius": "10px",
+                "padding":      "14px 18px",
+                "minWidth":     "200px",
+                "flex":         "1",
             },
             children=[
                 html.Div(full_name, style={
-                    "color": color, "fontWeight": "700",
-                    "fontSize": "14px", "marginBottom": "10px",
+                    "color": color, "fontWeight": "700", "fontSize": "14px",
+                    "marginBottom": "10px",
                     "fontFamily": "'Titillium Web', Arial, sans-serif",
                 }),
-                html.Div([
-                    html.Span("Points: ",    style={"color": "#888", "fontSize": "12px"}),
-                    html.Span(str(total_pts), style={"color": "#fff", "fontWeight": "700"}),
-                ], style={"marginBottom": "4px"}),
-                html.Div([
-                    html.Span("Wins: ",      style={"color": "#888", "fontSize": "12px"}),
-                    html.Span(str(total_wins), style={"color": "#fff", "fontWeight": "700"}),
-                ], style={"marginBottom": "4px"}),
-                html.Div([
-                    html.Span("Podiums: ",   style={"color": "#888", "fontSize": "12px"}),
-                    html.Span(str(podiums),  style={"color": "#fff", "fontWeight": "700"}),
-                ], style={"marginBottom": "4px"}),
-                html.Div([
-                    html.Span("Best Season: ", style={"color": "#888", "fontSize": "12px"}),
-                    html.Span(str(best_season), style={"color": "#fff", "fontWeight": "700"}),
-                ]),
+                html.Div([html.Span("Points: ", style={"color": "#888", "fontSize": "12px"}),
+                          html.Span(str(total_pts), style={"color": "#fff", "fontWeight": "700"})],
+                         style={"marginBottom": "4px"}),
+                html.Div([html.Span("Wins: ", style={"color": "#888", "fontSize": "12px"}),
+                          html.Span(str(total_wins), style={"color": "#fff", "fontWeight": "700"})],
+                         style={"marginBottom": "4px"}),
+                html.Div([html.Span("Podiums: ", style={"color": "#888", "fontSize": "12px"}),
+                          html.Span(str(podiums), style={"color": "#fff", "fontWeight": "700"})],
+                         style={"marginBottom": "4px"}),
+                html.Div([html.Span("Best Season: ", style={"color": "#888", "fontSize": "12px"}),
+                          html.Span(str(best_season), style={"color": "#fff", "fontWeight": "700"})],
+                         style={"marginBottom": "4px"}),
+                html.Div([html.Span("Trend: ", style={"color": "#888", "fontSize": "12px"}),
+                          html.Span(trend_text, style={"color": "#fff", "fontWeight": "700"})]),
             ]
         ))
 
-    return html.Div(
-        cards,
-        style={"display": "flex", "flexWrap": "wrap", "gap": "12px"},
-    )
+    return html.Div(cards, style={"display": "flex", "flexWrap": "wrap", "gap": "12px"})
 
 
 # ── LAYOUT ─────────────────────────────────────────────────────────
@@ -398,8 +385,6 @@ _season_opts = _season_options()
 _all_seasons = [o["value"] for o in _season_opts]
 _min_season  = min(_all_seasons) if _all_seasons else 2018
 _max_season  = max(_all_seasons) if _all_seasons else 2025
-
-# Default: show Hamilton, Verstappen, Norris pre-selected
 _default_drivers = [d["value"] for d in _driver_opts if d["value"] in ("HAM", "VER", "NOR")]
 
 layout = html.Div(
@@ -409,97 +394,64 @@ layout = html.Div(
         html.H1("Driver Performance Trend", style={"color": F1_RED, "fontSize": "22px"}),
         html.P(
             "How has a driver's performance changed across seasons? "
-            "Explore points scored and race wins over time.",
+            "Linear regression trend lines show whether a driver is improving or declining over time.",
             style={"color": "#555", "fontSize": "12px", "marginBottom": "28px"},
         ),
 
-        # ── FILTERS
+        # ── FILTERS ───────────────────────────────────────────────
         html.Div(
-            style={
-                "display":     "flex",
-                "gap":         "20px",
-                "marginBottom":"24px",
-                "flexWrap":    "wrap",
-                "alignItems":  "flex-end",
-            },
+            style={"display": "flex", "gap": "20px", "marginBottom": "24px",
+                   "flexWrap": "wrap", "alignItems": "flex-end"},
             children=[
-                # Driver multi-select
                 html.Div([
                     html.Label("Driver(s)", style=LABEL_STYLE),
                     dcc.Dropdown(
-                        id="dpt-driver-dd",
-                        options=_driver_opts,
-                        value=_default_drivers,
-                        multi=True,
+                        id="dpt-driver-dd", options=_driver_opts,
+                        value=_default_drivers, multi=True,
                         placeholder="Select driver(s)…",
                         style={**DD_STYLE, "minWidth": "320px"},
                     ),
                 ]),
-                # From year
                 html.Div([
                     html.Label("From Season", style=LABEL_STYLE),
                     dcc.Dropdown(
-                        id="dpt-from-year-dd",
-                        options=_season_opts,
-                        value=_min_season,
-                        clearable=False,
+                        id="dpt-from-year-dd", options=_season_opts,
+                        value=_min_season, clearable=False,
                         style={**DD_STYLE, "width": "110px"},
                     ),
                 ]),
-                # To year
                 html.Div([
                     html.Label("To Season", style=LABEL_STYLE),
                     dcc.Dropdown(
-                        id="dpt-to-year-dd",
-                        options=_season_opts,
-                        value=_max_season,
-                        clearable=False,
+                        id="dpt-to-year-dd", options=_season_opts,
+                        value=_max_season, clearable=False,
                         style={**DD_STYLE, "width": "110px"},
                     ),
                 ]),
             ],
         ),
 
-        # ── SUMMARY STAT CARDS
-        html.Div(
-            style=CARD_STYLE,
-            children=[
-                html.H3("Summary", style={
-                    "color": "#FFFFFF", "fontSize": "16px",
-                    "marginBottom": "14px", "marginTop": "0",
-                }),
-                html.Div(id="dpt-summary-cards"),
-            ],
-        ),
+        # ── SUMMARY CARDS ─────────────────────────────────────────
+        html.Div(style=CARD_STYLE, children=[
+            html.H3("Summary", style={"color": "#FFFFFF", "fontSize": "16px",
+                                      "marginBottom": "14px", "marginTop": "0"}),
+            html.Div(id="dpt-summary-cards"),
+        ]),
 
-        # ── POINTS LINE CHART
-        html.Div(
-            style=CARD_STYLE,
-            children=[
-                dcc.Graph(
-                    id="dpt-points-line-chart",
-                    config={"displayModeBar": False},
-                ),
-            ],
-        ),
+        # ── LINE CHART + REGRESSION ───────────────────────────────
+        html.Div(style=CARD_STYLE, children=[
+            dcc.Graph(id="dpt-points-line-chart", config={"displayModeBar": False}),
+        ]),
 
-        # ── WINS BAR CHART
-        html.Div(
-            style=CARD_STYLE,
-            children=[
-                dcc.Graph(
-                    id="dpt-wins-bar-chart",
-                    config={"displayModeBar": False},
-                ),
-            ],
-        ),
-
+        # ── PERFORMANCE OVERVIEW BAR CHART ────────────────────────
+        html.Div(style=CARD_STYLE, children=[
+            dcc.Graph(id="dpt-wins-bar-chart", config={"displayModeBar": False}),
+        ]),
     ],
 )
 
 
-# ── CALLBACKS
-
+# ── CALLBACKS ──────────────────────────────────────────────────────
 @app.callback(
     Output("dpt-points-line-chart", "figure"),
     Output("dpt-wins-bar-chart",    "figure"),
@@ -509,18 +461,14 @@ layout = html.Div(
     Input("dpt-to-year-dd",   "value"),
 )
 def update_charts(drivers, from_year, to_year):
-    # Guard: ensure from <= to
     if not from_year or not to_year:
         empty = _empty_fig("Select a season range.")
         return empty, empty, html.Div()
-
     if from_year > to_year:
         from_year, to_year = to_year, from_year
-
     drivers = drivers or []
-
-    line_fig   = _build_points_line_chart(_ALL_RESULTS, drivers, from_year, to_year)
-    bar_fig    = _build_wins_bar_chart(_ALL_RESULTS,    drivers, from_year, to_year)
-    stat_cards = _build_summary_stats(_ALL_RESULTS,     drivers, from_year, to_year)
-
-    return line_fig, bar_fig, stat_cards
+    return (
+        _build_points_line_chart(_ALL_RESULTS,          drivers, from_year, to_year),
+        _build_performance_overview_chart(_ALL_RESULTS, drivers, from_year, to_year),
+        _build_summary_stats(_ALL_RESULTS,              drivers, from_year, to_year),
+    )
