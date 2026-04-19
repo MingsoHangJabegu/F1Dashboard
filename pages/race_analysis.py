@@ -1,5 +1,4 @@
 from dash import html, dcc, Input, Output, ALL, MATCH
-
 from app import app
 from components.buttons.driver_toggle_button import get_driver_toggle_button_style
 from data_loader import (
