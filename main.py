@@ -3,7 +3,7 @@ from dash import html, dcc, Input, Output
 from app import app
 from components.navbar import navbar
 # from components.global_filter import global_filter
-from pages import race_analysis, grid_position_regression, driver_performance_trend  # ← YOUR ADDITION
+from pages import race_analysis, grid_position_regression, driver_performance_trend
 
 # ── Colour tokens ────────────────────────────────────────────────────
 BODY_BG = "#111119"
