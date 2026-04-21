@@ -229,10 +229,7 @@ def _build_points_line_chart(df, drivers, from_year, to_year):
 
 # ── CHART 2: SEASON PERFORMANCE OVERVIEW (WINS + PODIUMS) ──────────
 def _build_performance_overview_chart(df, drivers, from_year, to_year):
-    """
-    FIX 3 — Renamed & reframed from 'Race Wins' to 'Season Performance Overview'.
-    Shows BOTH wins AND podiums per season — differentiates from Isha's wins-only chart.
-    """
+   
     if df.empty or not drivers:
         return _empty_fig("Select at least one driver.")
 
