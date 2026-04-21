@@ -7,6 +7,7 @@ from data_loader import (
 )
 from pages.standings import build_single_standings_card
 from visualisation.lap_times import plot_lap_times, lap_times_layout, _empty_fig
+from visualisation.position_changes import plot_position_changes
 
 # ── STYLES ────────────────────────────────────────────────────────
 F1_RED  = "#E10600"
@@ -36,6 +37,23 @@ CARD_STYLE = {
     "padding":      "16px",
     "marginBottom": "16px",
 }
+
+BTN_BASE = {
+    "borderRadius":  "20px",
+    "padding":       "6px 18px",
+    "fontSize":      "12px",
+    "fontWeight":    "700",
+    "cursor":        "pointer",
+    "border":        "1px solid #555",
+    "fontFamily":    "'Titillium Web', Arial, sans-serif",
+    "letterSpacing": "1px",
+    "marginRight":   "8px",
+}
+
+BTN_ACTIVE   = {**BTN_BASE, "backgroundColor": F1_RED,
+                "color": "#FFFFFF", "border": f"1px solid {F1_RED}"}
+BTN_INACTIVE = {**BTN_BASE, "backgroundColor": "rgba(0,0,0,0)",
+                "color": "#666"}
 
 # ── LAYOUT ────────────────────────────────────────────────────────
 layout = html.Div(
@@ -89,12 +107,7 @@ layout = html.Div(
 
         dcc.Store(id="ra-color-map-store"),
 
-        # ── LAP TIMES CHART ───────────────────────────────────────
-        html.Div(style=CARD_STYLE, children=[
-            html.Div(id="lap-times-container")
-        ]),
-
-        # ── Driver standing charts ────────────────────────────────────
+        # ── 1. SEASON STANDINGS (TOP — as requested by Mingso) ────
         html.Div(
             style=CARD_STYLE,
             children=[
@@ -110,13 +123,14 @@ layout = html.Div(
                     children=[
                         html.H3(
                             "Season Standings",
-                            style={"color": "#FFFFFF", "fontSize": "18px", "margin": "0"},
+                            style={"color": "#FFFFFF", "fontSize": "18px",
+                                   "margin": "0"},
                         ),
                         dcc.Dropdown(
                             id="ra-standings-type-dd",
                             options=[
-                                {"label": "Driver Standings", "value": "drivers"},
-                                {"label": "Constructor Standings", "value": "constructors"},
+                                {"label": "Driver Standings",      "value": "drivers"},
+                                {"label": "Constructor Standings",  "value": "constructors"},
                             ],
                             value="drivers",
                             clearable=False,
@@ -125,6 +139,78 @@ layout = html.Div(
                     ],
                 ),
                 html.Div(id="ra-standings-container"),
+            ],
+        ),
+
+        # ── 2. LAP TIMES CHART ────────────────────────────────────
+        html.Div(style=CARD_STYLE, children=[
+            html.Div(id="lap-times-container")
+        ]),
+
+        # ── 3. POSITION CHANGES BUMP CHART (Shakira's contribution)
+        html.Div(
+            style=CARD_STYLE,
+            children=[
+                # Card header
+                html.Div(
+                    style={
+                        "display": "flex",
+                        "justifyContent": "space-between",
+                        "alignItems": "center",
+                        "marginBottom": "16px",
+                        "flexWrap": "wrap",
+                        "gap": "12px",
+                    },
+                    children=[
+                        html.Div([
+                            html.H3(
+                                "Race Position Changes",
+                                style={"color": "#FFFFFF", "fontSize": "18px",
+                                       "margin": "0 0 4px 0"},
+                            ),
+                            html.P(
+                                "Bump chart showing lap-by-lap position changes. "
+                                "Coloured dots mark pit stops.",
+                                style={"color": "#555", "fontSize": "12px",
+                                       "margin": "0"},
+                            ),
+                        ]),
+                        # Top 10 / Bottom 10 toggle
+                        html.Div([
+                            html.Button(
+                                "Top 10",
+                                id="ra-top10-btn",
+                                n_clicks=1,
+                                style=BTN_ACTIVE,
+                            ),
+                            html.Button(
+                                "Bottom 10",
+                                id="ra-bottom10-btn",
+                                n_clicks=0,
+                                style=BTN_INACTIVE,
+                            ),
+                        ]),
+                    ],
+                ),
+
+                # Driver highlight dropdown
+                html.Div(
+                    style={"marginBottom": "16px"},
+                    children=[
+                        html.Label("Highlight Drivers",
+                                   style=LABEL_STYLE),
+                        dcc.Dropdown(
+                            id="ra-highlight-dd",
+                            options=[],
+                            value=None,
+                            multi=True,
+                            placeholder="Select drivers to highlight…",
+                            style={**DD_STYLE, "maxWidth": "500px"},
+                        ),
+                    ],
+                ),
+
+                html.Div(id="ra-position-changes-container"),
             ],
         ),
 
@@ -148,8 +234,8 @@ def update_gp(season, session):
 @app.callback(
     Output("ra-color-map-store", "data"),
     Input("ra-season-dd", "value"),
-    Input("ra-gp-dd", "value"),
-    Input("ra-session-dd", "value")
+    Input("ra-gp-dd",     "value"),
+    Input("ra-session-dd","value")
 )
 def update_color_map(season, gp, session):
     if not gp: return {}
@@ -157,11 +243,20 @@ def update_color_map(season, gp, session):
 
 
 @app.callback(
+    Output("ra-standings-container", "children"),
+    Input("ra-season-dd",        "value"),
+    Input("ra-standings-type-dd","value"),
+)
+def render_standings_tables(season, standings_type):
+    return build_single_standings_card(season, standings_type)
+
+
+@app.callback(
     Output("lap-times-container", "children"),
-    Input("ra-season-dd", "value"),
-    Input("ra-gp-dd", "value"),
-    Input("ra-session-dd", "value"),
-    Input("ra-color-map-store", "data")
+    Input("ra-season-dd",         "value"),
+    Input("ra-gp-dd",             "value"),
+    Input("ra-session-dd",        "value"),
+    Input("ra-color-map-store",   "data")
 )
 def render_lap_times(season, gp, session, color_map):
     if not gp:
@@ -174,18 +269,9 @@ def render_lap_times(season, gp, session, color_map):
 
 
 @app.callback(
-    Output("ra-standings-container", "children"),
-    Input("ra-season-dd", "value"),
-    Input("ra-standings-type-dd", "value"),
-)
-def render_standings_tables(season, standings_type):
-    return build_single_standings_card(season, standings_type)
-
-
-@app.callback(
     Output("lap-chart", "figure"),
-    Input("ra-season-dd", "value"),
-    Input("ra-gp-dd", "value"),
+    Input("ra-season-dd",  "value"),
+    Input("ra-gp-dd",      "value"),
     Input("ra-session-dd", "value"),
     Input({"type": "driver-btn", "index": ALL}, "n_clicks"),
     Input({"type": "driver-btn", "index": ALL}, "id"),
@@ -214,3 +300,73 @@ def update_chart(season, gp, session, n_clicks_list, ids, color_map):
 )
 def toggle_button_style(n_clicks):
     return get_driver_toggle_button_style(n_clicks)
+
+
+# ── POSITION CHANGES CALLBACKS ────────────────────────────────────
+
+@app.callback(
+    Output("ra-highlight-dd", "options"),
+    Input("ra-season-dd",       "value"),
+    Input("ra-gp-dd",           "value"),
+    Input("ra-session-dd",      "value"),
+)
+def update_highlight_options(season, gp, session):
+    if not gp or session != "Race":
+        return []
+    laps_df = filter_laps(season, gp, "Race")
+    if laps_df.empty:
+        return []
+    drivers = sorted(laps_df["Driver"].dropna().unique().tolist())
+    return [{"label": d, "value": d} for d in drivers]
+
+
+@app.callback(
+    Output("ra-top10-btn",    "style"),
+    Output("ra-bottom10-btn", "style"),
+    Input("ra-top10-btn",    "n_clicks"),
+    Input("ra-bottom10-btn", "n_clicks"),
+)
+def toggle_group_buttons(top_clicks, bot_clicks):
+    top_clicks = top_clicks or 0
+    bot_clicks = bot_clicks or 0
+    if bot_clicks > top_clicks:
+        return BTN_INACTIVE, BTN_ACTIVE
+    return BTN_ACTIVE, BTN_INACTIVE
+
+
+@app.callback(
+    Output("ra-position-changes-container", "children"),
+    Input("ra-season-dd",       "value"),
+    Input("ra-gp-dd",           "value"),
+    Input("ra-session-dd",      "value"),
+    Input("ra-color-map-store", "data"),
+    Input("ra-top10-btn",       "n_clicks"),
+    Input("ra-bottom10-btn",    "n_clicks"),
+    Input("ra-highlight-dd",    "value"),
+)
+def render_position_changes(season, gp, session, color_map,
+                             top_clicks, bot_clicks, highlight):
+    # Only show for Race session
+    if session != "Race":
+        return html.Div(
+            "Position changes are only available for Race sessions.",
+            style={"color": "#666", "padding": "30px", "textAlign": "center"},
+        )
+    if not gp:
+        return html.Div(
+            "Select a Grand Prix to see position changes.",
+            style={"color": "#666", "padding": "30px", "textAlign": "center"},
+        )
+
+    top_clicks = top_clicks or 0
+    bot_clicks = bot_clicks or 0
+    show_group = "bottom10" if bot_clicks > top_clicks else "top10"
+
+    laps_df = filter_laps(season, gp, "Race")
+    fig = plot_position_changes(
+        df=laps_df,
+        color_map=color_map or {},
+        selected_drivers=highlight if highlight else None,
+        show_group=show_group,
+    )
+    return dcc.Graph(figure=fig, config={"displayModeBar": False})
