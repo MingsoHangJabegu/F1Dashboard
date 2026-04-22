@@ -424,7 +424,7 @@ layout = html.Div(
         html.H1("Driver Dominance", style={"color": F1_RED, "fontSize": "22px"}),
         html.P(
             "This chart compares each driver's actual wins to expected wins estimated by a Logistic Regression model.",
-            style={"color": "#555", "fontSize": "18px", "marginBottom": "28px"},
+            style={"color": "#555", "fontSize": "12px", "marginBottom": "28px"},
         ),
         html.Div(
             style={

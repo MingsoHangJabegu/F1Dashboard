@@ -2,8 +2,7 @@ from dash import html, dcc, Input, Output
 
 from app import app
 from components.navbar import navbar
-# from components.global_filter import global_filter
-from pages import race_analysis, grid_position_regression, driver_performance_trend, driver_dominance
+from pages import home, grid_position_regression, driver_performance_trend, driver_dominance
 
 # ── Colour tokens ────────────────────────────────────────────────────
 BODY_BG = "#111119"
@@ -25,15 +24,15 @@ app.layout = html.Div(
     Input("url", "pathname"),
 )
 def display_page(pathname):
-    if pathname == "/race-analysis":
-        return race_analysis.layout
+    if pathname == "/home":
+        return home.layout
     if pathname == "/grid-position-analysis":
         return grid_position_regression.layout
     if pathname == "/driver-performance-trend":
         return driver_performance_trend.layout
     if pathname == "/driver-dominance":
         return driver_dominance.layout
-    return race_analysis.layout
+    return home.layout
 
 
 # ── Run ──────────────────────────────────────────────────────────────

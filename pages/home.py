@@ -62,7 +62,7 @@ layout = html.Div(
 
         html.H1("Race Analysis", style={"color": F1_RED, "fontSize": "22px"}),
         html.P(
-            "Lap times, positions, tyres, and pit stops — all in one place",
+            "Standing, Lap times, Position Changes — all in one place",
             style={"color": "#555", "fontSize": "12px", "marginBottom": "28px"},
         ),
 
