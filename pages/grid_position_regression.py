@@ -1,10 +1,12 @@
-from dash import html, dcc, Input, Output
+from dash import html, dcc, callback, Input, Output
 import pandas as pd
 import plotly.graph_objects as go
+from data_loader import *
 
-from app import app
+
 from data_loader import seasons, filter_results, get_races
 from visualisation.grid_logistic_regression import plot_grid_logistic_regression, _empty_fig
+
 
 # ── STYLES ────────────────────────────────────────────────────────
 F1_RED  = "#E10600"
@@ -106,7 +108,7 @@ layout = html.Div(
 
 # ── CALLBACKS ─────────────────────────────────────────────────────
 
-@app.callback(
+@callback(
     Output("gp-race-dd", "options"),
     Input("gp-from-year-dd", "value"),
     Input("gp-to-year-dd", "value")
@@ -125,7 +127,7 @@ def update_races(from_year, to_year):
     return options
 
 
-@app.callback(
+@callback(
     Output("logistic-regression-container", "children"),
     Input("gp-from-year-dd", "value"),
     Input("gp-to-year-dd", "value"),

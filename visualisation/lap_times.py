@@ -70,7 +70,7 @@ def lap_times_layout(df, results_df, session_type, color_map=None):
     else:
         all_drivers = sorted(df["Driver"].dropna().unique().tolist())
 
-    top3 = ordered[:3] if not results_df.empty else all_drivers[:3]
+    top3 = all_drivers[:3]
 
     toggle_buttons = [
         html.Button(

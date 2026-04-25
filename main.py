@@ -4,6 +4,7 @@ from app import app
 from components.navbar import navbar
 # from components.global_filter import global_filter
 from pages import race_analysis, grid_position_regression, driver_performance_trend, driver_dominance
+from pages import pit_strategy_analysis
 
 # ── Colour tokens ────────────────────────────────────────────────────
 BODY_BG = "#111119"
@@ -33,9 +34,14 @@ def display_page(pathname):
         return driver_performance_trend.layout
     if pathname == "/driver-dominance":
         return driver_dominance.layout
+
+    # ✅ ADD THIS NEW PAGE
+    if pathname == "/pit-strategy-analysis":
+        return pit_strategy_analysis.layout
+
     return race_analysis.layout
 
 
 # ── Run ──────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=True, port=8051)

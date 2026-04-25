@@ -1,14 +1,14 @@
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-from dash import Input, Output, dcc, html
+from dash import html, dcc, callback, Input, Output
 from sklearn.compose import ColumnTransformer
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import GroupKFold
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
-from app import app
+
 from data_loader import results_df, seasons
 
 # Style tokens
@@ -468,7 +468,7 @@ layout = html.Div(
 
 
 # CALLBACKS
-@app.callback(
+@callback(
     Output("dd-constructor-dd", "options"),
     Output("dd-constructor-dd", "value"),
     Input("dd-season-dd", "value"),
@@ -491,7 +491,7 @@ def update_constructors(season):
     return options, "ALL"
 
 
-@app.callback(
+@callback(
     Output("dd-charts-container", "children"),
     Input("dd-season-dd", "value"),
     Input("dd-constructor-dd", "value"),

@@ -1,10 +1,11 @@
-from dash import dcc, html
+from dash import html, dcc, callback, Input, Output
 from dash.dependencies import Input, Output, State
 
-from app import app
+
 from data_loader import load_csv, seasons
 import plotly.express as px
 from visualisation.driver_standings import driver_standings_card, get_driver_standings_df
+from data_loader import *
 
 F1_RED = "#E10600"
 CARD_BG = "#1A1A2E"
@@ -434,7 +435,7 @@ layout = html.Div(
 )
 
 
-@app.callback(
+@callback(
     Output("standings-content", "children"),
     Input("standings-season-dropdown", "value"),
 )
@@ -442,7 +443,7 @@ def update_standings_content(season):
     return build_standings_sections(season)
 
 
-@app.callback(
+@callback(
     [Output("wins-constructor-dropdown", "options"), Output("wins-constructor-dropdown", "value")],
     Input("standings-season-dropdown", "value"),
     State("wins-constructor-dropdown", "value"),
@@ -454,7 +455,7 @@ def update_wins_constructor_options(season, current_constructor):
     return options, next_value
 
 
-@app.callback(
+@callback(
     [Output("wins-by-driver-summary", "children"), Output("wins-by-driver-chart", "figure")],
     [Input("standings-season-dropdown", "value"), Input("wins-constructor-dropdown", "value")],
 )

@@ -7,14 +7,14 @@ Charts  : Line chart (points per season + regression trend line)
           + Season Performance Overview bar chart (wins + podiums)
 """
 
-from dash import html, dcc, Input, Output
+from dash import html, dcc, callback, Input, Output
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 import glob
 import os
+from data_loader import *
 
-from app import app
 
 # ── CONSTANTS ──────────────────────────────────────────────────────
 F1_RED   = "#E10600"
@@ -449,7 +449,7 @@ layout = html.Div(
 
 
 # ── CALLBACKS ──────────────────────────────────────────────────────
-@app.callback(
+@callback(
     Output("dpt-points-line-chart", "figure"),
     Output("dpt-wins-bar-chart",    "figure"),
     Output("dpt-summary-cards",     "children"),

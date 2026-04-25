@@ -1,7 +1,8 @@
 
 from dash import html
 from dash.dependencies import Input, Output
-from app import app
+from data_loader import *
+
 
 F1_RED = "#E10600"
 CARD_BG = "#1A1A2E"
@@ -19,7 +20,7 @@ layout = html.Div(
 )
 
 # Callback to update compare page based on global season filter
-@app.callback(
+@callback(
     Output("compare-content", "children"),
     [
         Input("global-season-dropdown", "value"),
